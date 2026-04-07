@@ -1,0 +1,31 @@
+[package]
+name = "glossa-morpho"
+version = "0.1.0"
+description = "A desktop localization string editor built with Tauri and Nuxt"
+authors = ["Tyler Jackson"]
+license = "MIT"
+edition = "2021"
+rust-version = "1.82"
+publish = false
+
+[package.metadata.winres]
+ProductName = "glossa-morpho"
+FileDescription = "A desktop localization string editor built with Tauri and Nuxt"
+OriginalFilename = "glossa-morpho.exe"
+LegalCopyright = "Copyright (c) 2026 Legend Co., Ltd."
+
+[lib]
+name = "glossa_morpho_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+chrono = { version = "0.4", features = ["clock", "serde"] }
+parking_lot = "0.12"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tauri = { version = "2", features = [] }
+thiserror = "2"
+uuid = { version = "1", features = ["serde", "v4"] }

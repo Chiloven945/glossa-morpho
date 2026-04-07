@@ -1,0 +1,1 @@
+//! YAML importer stub.

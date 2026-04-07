@@ -1,0 +1,11 @@
+{
+  "dashboard": {
+    "welcomeBack": "欢迎回来，{name}",
+    "emptyState": {
+      "title": ""
+    }
+  },
+  "common": {
+    "ok": "确定"
+  }
+}

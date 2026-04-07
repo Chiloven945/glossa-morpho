@@ -1,0 +1,1 @@
+//! RESX exporter stub.

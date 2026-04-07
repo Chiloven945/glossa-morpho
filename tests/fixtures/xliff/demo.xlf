@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<xliff version="1.2">
+  <file source-language="en-US" target-language="zh-CN">
+    <body>
+      <trans-unit id="welcome">
+        <source>Welcome back, {name}</source>
+        <target>欢迎回来，{name}</target>
+      </trans-unit>
+    </body>
+  </file>
+</xliff>

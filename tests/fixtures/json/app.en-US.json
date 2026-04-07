@@ -1,0 +1,11 @@
+{
+  "dashboard": {
+    "welcomeBack": "Welcome back, {name}",
+    "emptyState": {
+      "title": "No records found"
+    }
+  },
+  "common": {
+    "ok": "OK"
+  }
+}

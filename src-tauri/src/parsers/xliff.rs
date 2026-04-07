@@ -1,0 +1,1 @@
+//! XLIFF importer stub.

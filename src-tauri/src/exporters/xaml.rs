@@ -15,9 +15,10 @@ pub fn export(
     let raw = load_raw_or_default(
         file,
         workspace_dir,
-        b"<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<ResourceDictionary xmlns=\"http://schemas.microsoft.com/winfx/2006/xaml/presentation\" xmlns:x=\"http://schemas.microsoft.com/winfx/2006/xaml\"/>\n",
+        b"<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<ResourceDictionary xmlns=\"http://schemas.microsoft.com/winfx/2006/xaml/presentation\" xmlns:x=\"http://schemas.microsoft.com/winfx/2006/xaml\" xmlns:sys=\"clr-namespace:System;assembly=mscorlib\"/>\n",
     );
     let mut root = parse_xml_root(&raw, "XAML raw file")?;
+    ensure_xaml_namespaces(&mut root);
 
     for entry in entries {
         let value = if entry.target_value.is_empty() {
@@ -33,6 +34,15 @@ pub fn export(
     }
 
     write_xml_document(&root, "XAML")
+}
+
+fn ensure_xaml_namespaces(root: &mut Element) {
+    root.attributes
+        .entry("xmlns:x".into())
+        .or_insert_with(|| "http://schemas.microsoft.com/winfx/2006/xaml".into());
+    root.attributes
+        .entry("xmlns:sys".into())
+        .or_insert_with(|| "clr-namespace:System;assembly=mscorlib".into());
 }
 
 fn find_keyed_element_mut<'a>(element: &'a mut Element, key: &str) -> Option<&'a mut Element> {
@@ -116,5 +126,6 @@ mod tests {
         let text = String::from_utf8(out).unwrap();
         assert!(text.contains("Localized"));
         assert!(text.contains("AppTitle"));
+        assert!(text.contains("xmlns:sys"));
     }
 }

@@ -1,5 +1,9 @@
 use thiserror::Error;
 
+#[expect(
+    dead_code,
+    reason = "Reserved for future shared command error handling."
+)]
 #[derive(Debug, Error)]
 pub enum AppError {
     #[error("project not found: {0}")]
@@ -10,4 +14,8 @@ pub enum AppError {
     InvalidInput(String),
 }
 
+#[expect(
+    dead_code,
+    reason = "Reserved for future shared command result handling."
+)]
 pub type AppResult<T> = Result<T, AppError>;

@@ -75,6 +75,10 @@ pub fn element_text(name: &str, value: &str) -> Element {
     element
 }
 
+#[expect(
+    dead_code,
+    reason = "Reserved for future XML round-trip mutation helpers."
+)]
 pub fn direct_child_mut<'a>(parent: &'a mut Element, name: &str) -> Option<&'a mut Element> {
     parent.children.iter_mut().find_map(|node| match node {
         XMLNode::Element(item) if local_name(&item.name) == name => Some(item),

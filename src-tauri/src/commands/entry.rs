@@ -68,60 +68,45 @@ fn is_root_file(file: &ResourceFileNode) -> bool {
     file.based_on_locale.is_none()
 }
 
-fn build_detail(
-    _project: &ProjectWorkspace,
-    file: &ResourceFileNode,
+struct BuildDetailInput<'a> {
+    file: &'a ResourceFileNode,
     key: String,
     source_value: String,
     target_value: String,
     note: String,
-    status: Option<String>,
-    updated_at: &str,
-    action: &str,
-) -> EntryDetail {
-    let normalized_status = status.unwrap_or_else(|| {
-        if target_value.trim().is_empty() {
-            "new".into()
-        } else {
-            "translated".into()
-        }
-    });
+    status: String,
+    updated_at: String,
+    action: &'a str,
+}
 
-    let source_locale = if is_root_file(file) {
-        String::new()
-    } else {
-        file.based_on_locale.clone().unwrap_or_default()
+fn build_detail(input: BuildDetailInput<'_>) -> EntryDetail {
+    let summary = EntrySummary {
+        id: Uuid::new_v4().to_string(),
+        file_id: input.file.id.clone(),
+        key: input.key.clone(),
+        source_value: input.source_value.clone(),
+        target_value: input.target_value.clone(),
+        status: input.status.clone(),
+        note_count: usize::from(!input.note.is_empty()),
+        candidate_count: 0,
+        updated_at: input.updated_at.clone(),
     };
 
     EntryDetail {
-        summary: EntrySummary {
-            id: Uuid::new_v4().to_string(),
-            file_id: file.id.clone(),
-            key,
-            source_value: if is_root_file(file) {
-                String::new()
-            } else {
-                source_value.clone()
-            },
-            target_value: target_value.clone(),
-            status: normalized_status,
-            note_count: usize::from(!note.trim().is_empty()),
-            candidate_count: 0,
-            updated_at: updated_at.to_string(),
-        },
-        file_path: file.logical_path.clone(),
-        source_locale,
-        target_locale: file.locale.clone(),
-        note,
+        summary,
+        file_path: input.file.logical_path.clone(),
+        source_locale: input.file.based_on_locale.clone().unwrap_or_default(),
+        target_locale: input.file.locale.clone(),
+        note: input.note,
         issues: vec![],
         candidates: vec![],
         history: vec![HistoryEvent {
             id: Uuid::new_v4().to_string(),
-            action: action.into(),
+            action: input.action.to_string(),
             before_value: String::new(),
-            after_value: target_value,
-            operator: "desktop-user".into(),
-            created_at: updated_at.to_string(),
+            after_value: input.target_value,
+            operator: "system".to_string(),
+            created_at: input.updated_at,
         }],
     }
 }
@@ -156,17 +141,16 @@ fn create_descendant_entries(
                 }
                 next_target
             } else {
-                let mut detail = build_detail(
-                    project,
-                    &child_file,
-                    key.to_string(),
-                    parent_target_value.to_string(),
-                    String::new(),
-                    String::new(),
-                    Some("new".into()),
-                    updated_at,
-                    "create",
-                );
+                let mut detail = build_detail(BuildDetailInput {
+                    file: &child_file,
+                    key: key.to_string(),
+                    source_value: parent_target_value.to_string(),
+                    target_value: String::new(),
+                    note: String::new(),
+                    status: "new".into(),
+                    updated_at: updated_at.to_string(),
+                    action: "create",
+                });
                 detail.source_locale = parent_file.locale.clone();
                 refresh_entry_detail(&mut detail);
                 let child_target_value = detail.summary.target_value.clone();
@@ -216,17 +200,22 @@ pub fn create_entry(
     } else {
         input.source_value.clone().unwrap_or_default()
     };
-    let mut detail = build_detail(
-        project,
-        &file,
-        input.key.clone(),
+    let mut detail = build_detail(BuildDetailInput {
+        file: &file,
+        key: input.key.clone(),
         source_value,
-        target_value.clone(),
-        input.note.unwrap_or_default(),
-        input.status,
-        &updated_at,
-        "create",
-    );
+        target_value: target_value.clone(),
+        note: input.note.unwrap_or_default(),
+        status: input.status.unwrap_or_else(|| {
+            if target_value.is_empty() {
+                "new".into()
+            } else {
+                "translated".into()
+            }
+        }),
+        updated_at: updated_at.clone(),
+        action: "create",
+    });
     refresh_entry_detail(&mut detail);
     let entry_id = detail.summary.id.clone();
     project.entries.push(detail.summary.clone());

@@ -150,7 +150,7 @@ fn find_or_create_descendant<'a>(root: &'a mut Element, path: &[&str]) -> &'a mu
             None => {
                 current
                     .children
-                    .push(XMLNode::Element(Element::new(*segment)));
+                    .push(XMLNode::Element(Element::new(segment)));
                 current.children.len() - 1
             }
         };

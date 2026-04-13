@@ -1,6 +1,8 @@
-<script setup lang="ts">
+<script lang="ts" setup>
 import type {TabsItem} from '@nuxt/ui'
-import type {EntryDetail, TranslationStatus} from '~/shared/types/models'
+import type {EntryDetail, TranslationStatus} from '#shared/types/models'
+
+const {t} = useI18n()
 
 const props = defineProps<{
   entry?: EntryDetail
@@ -15,13 +17,13 @@ const note = ref('')
 const status = ref<TranslationStatus>('new')
 const activeTab = ref('edit')
 
-const statusOptions = [
-  {label: 'new', value: 'new'},
-  {label: 'translated', value: 'translated'},
-  {label: 'reviewed', value: 'reviewed'},
-  {label: 'approved', value: 'approved'},
-  {label: 'stale', value: 'stale'}
-]
+const statusOptions = computed(() => [
+  {label: t('status.new'), value: 'new'},
+  {label: t('status.translated'), value: 'translated'},
+  {label: t('status.reviewed'), value: 'reviewed'},
+  {label: t('status.approved'), value: 'approved'},
+  {label: t('status.stale'), value: 'stale'}
+])
 
 const tabs = computed<TabsItem[]>(() => [
   {label: 'Edit', value: 'edit', icon: 'i-lucide-pencil-line'},
@@ -29,6 +31,9 @@ const tabs = computed<TabsItem[]>(() => [
   {label: 'Candidates', value: 'candidates', icon: 'i-lucide-sparkles'},
   {label: 'Validation', value: 'validation', icon: 'i-lucide-shield-check'}
 ])
+
+const hasUpstream = computed(() => Boolean(props.entry?.sourceLocale))
+const targetFieldLabel = computed(() => hasUpstream.value ? (t('labels.target') as string) : (t('labels.source') as string))
 
 watch(
     () => props.entry,
@@ -53,10 +58,14 @@ function applyCandidate(value: string) {
   targetValue.value = value
   activeTab.value = 'edit'
 }
+
+function issueColor(level: string) {
+  return level === 'error' ? 'error' : level === 'warning' ? 'warning' : 'info'
+}
 </script>
 
 <template>
-  <UCard class="h-full">
+  <UCard :ui="{ root: 'h-full min-h-0 rounded-none border-0 flex flex-col', body: 'min-h-0 flex-1 overflow-auto' }">
     <template #header>
       <div class="space-y-3">
         <div class="flex items-start justify-between gap-3">
@@ -67,34 +76,42 @@ function applyCandidate(value: string) {
             </p>
           </div>
           <UBadge v-if="entry" color="primary" variant="soft">
-            {{ entry.status }}
+            {{ t(`status.${entry.status}`) }}
           </UBadge>
         </div>
 
-        <div v-if="entry" class="grid grid-cols-2 gap-3">
-          <div>
-            <p class="text-xs text-muted">{{ $t('labels.sourceLocale') }}</p>
+        <div v-if="entry" :class="hasUpstream ? 'grid grid-cols-2 gap-3' : 'grid grid-cols-1 gap-3'">
+          <div v-if="hasUpstream">
+            <p class="text-xs text-muted">{{ $t('labels.upstreamLocale') }}</p>
             <p class="font-medium">{{ entry.sourceLocale }}</p>
           </div>
           <div>
-            <p class="text-xs text-muted">{{ $t('labels.targetLocale') }}</p>
+            <p class="text-xs text-muted">{{ hasUpstream ? $t('labels.workingLocale') : $t('labels.locale') }}</p>
             <p class="font-medium">{{ entry.targetLocale }}</p>
           </div>
+        </div>
+
+        <div v-if="entry" class="flex flex-wrap gap-2">
+          <UBadge color="neutral" variant="subtle">{{ entry.history.length }} {{ $t('labels.history') }}</UBadge>
+          <UBadge color="primary" variant="subtle">{{ entry.candidates.length }} {{ $t('labels.candidates') }}</UBadge>
+          <UBadge :color="entry.issues.length ? 'warning' : 'success'" variant="subtle">
+            {{ entry.issues.length }} {{ $t('labels.conflicts') }}
+          </UBadge>
         </div>
       </div>
     </template>
 
-    <div v-if="entry" class="space-y-4">
-      <UTabs v-model="activeTab" :items="tabs" :content="false" variant="link"/>
+    <div v-if="entry" class="flex min-h-0 flex-col gap-4">
+      <UTabs v-model="activeTab" :content="false" :items="tabs" variant="link"/>
 
       <div v-if="activeTab === 'edit'" class="space-y-4">
         <UForm :state="{ targetValue, note, status }" class="space-y-4">
-          <UFormField :label="$t('labels.source') as string" name="sourceValue">
-            <UTextarea :model-value="entry.sourceValue" :rows="4" disabled class="w-full"/>
+          <UFormField v-if="hasUpstream" :label="$t('labels.source') as string" name="sourceValue">
+            <UTextarea :model-value="entry.sourceValue" :rows="4" class="w-full" disabled/>
           </UFormField>
 
-          <UFormField :label="$t('labels.target') as string" name="targetValue">
-            <UTextarea v-model="targetValue" :rows="6" class="w-full"/>
+          <UFormField :label="targetFieldLabel" name="targetValue">
+            <UTextarea v-model="targetValue" :rows="hasUpstream ? 8 : 10" class="w-full"/>
           </UFormField>
 
           <UFormField :label="$t('labels.note') as string" name="note">
@@ -103,7 +120,7 @@ function applyCandidate(value: string) {
 
           <div class="grid gap-4 md:grid-cols-[minmax(0,1fr)_auto]">
             <UFormField :label="$t('labels.status') as string" name="status">
-              <USelectMenu v-model="status" :items="statusOptions" value-key="value" class="w-full"/>
+              <USelectMenu v-model="status" :items="statusOptions" class="w-full" value-key="value"/>
             </UFormField>
 
             <div class="flex items-end justify-end">
@@ -147,7 +164,7 @@ function applyCandidate(value: string) {
             </div>
             <p class="text-sm">{{ candidate.value }}</p>
             <div class="flex justify-end">
-              <UButton color="neutral" variant="outline" size="sm" @click="applyCandidate(candidate.value)">
+              <UButton color="neutral" size="sm" variant="outline" @click="applyCandidate(candidate.value)">
                 {{ $t('actions.useCandidate') }}
               </UButton>
             </div>
@@ -159,8 +176,7 @@ function applyCandidate(value: string) {
       <div v-else class="space-y-3">
         <UCard v-for="issue in entry.issues" :key="issue.id">
           <div class="flex items-start gap-3">
-            <UBadge :color="issue.level === 'error' ? 'error' : issue.level === 'warning' ? 'warning' : 'info'"
-                    variant="subtle">
+            <UBadge :color="issueColor(issue.level)" variant="subtle">
               {{ issue.level }}
             </UBadge>
             <p class="text-sm">{{ issue.message }}</p>

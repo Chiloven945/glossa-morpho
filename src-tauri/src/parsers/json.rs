@@ -1,6 +1,8 @@
-//! JSON importer stub.
-//!
-//! TODO:
-//! 1. Parse nested objects into canonical keys.
-//! 2. Preserve comments/order when possible.
-//! 3. Emit translation_units + translations + format_metadata.
+use crate::models::ImportedEntry;
+use std::path::Path;
+
+pub fn import(path: &Path, content: &[u8]) -> Result<Vec<ImportedEntry>, String> {
+    let value: serde_json::Value = serde_json::from_slice(content)
+        .map_err(|error| format!("failed to parse JSON file {}: {error}", path.display()))?;
+    Ok(super::flatten_json_value(&value))
+}

@@ -1,38 +1,88 @@
-<script setup lang="ts">
-import {h, resolveComponent} from 'vue'
-import type {TableColumn, TabsItem} from '@nuxt/ui'
-import type {EntrySummary, ProjectWorkspace, ViewMode} from '~/shared/types/models'
+<script lang="ts" setup>
+import TreemapView from '~/components/treemap/TreemapView.vue'
+import type {DropdownMenuItem, TabsItem} from '@nuxt/ui'
+import type {WorkspaceContextMenuItem} from '~/utils/workspace-actions'
+import {buildContextMenuItems, parseActionValue} from '~/utils/workspace-actions'
+import type {EntrySummary, ProjectWorkspace, ResourceFileNode, TranslationStatus, ViewMode} from '#shared/types/models'
+
+const {t} = useI18n()
 
 const props = defineProps<{
   project: ProjectWorkspace
   entries: EntrySummary[]
   selectedEntryId: string | null
-  searchText: string
+  selectedEntryIds: string[]
+  statusFilter: TranslationStatus | 'all'
   viewMode: ViewMode
   showOnlyMissing: boolean
-  bulkSearch: string
-  bulkReplacement: string
-  bulkUseRegex: boolean
+  sortBy: 'updatedDesc' | 'keyAsc' | 'status'
+  searchText: string
+  selectedFileId?: string | null
+  selectedFile?: ResourceFileNode | null
 }>()
 
 const emit = defineEmits<{
-  updateSearch: [value: string]
-  selectEntry: [entryId: string]
+  updateStatusFilter: [value: TranslationStatus | 'all']
+  selectEntry: [payload: { entryId: string; append?: boolean; range?: boolean; orderedIds?: string[] }]
+  selectAllEntries: [entryIds: string[]]
   changeView: [view: ViewMode]
   changeShowOnlyMissing: [value: boolean]
-  updateBulkSearch: [value: string]
-  updateBulkReplacement: [value: string]
-  updateBulkUseRegex: [value: boolean]
-  applyBulkReplace: []
+  updateSortBy: [value: 'updatedDesc' | 'keyAsc' | 'status']
+  createEntry: [fileId: string]
+  deleteEntry: [entryId: string]
+  deleteEntries: [entryIds: string[]]
 }>()
 
-const UBadge = resolveComponent('UBadge')
-const UButton = resolveComponent('UButton')
+const contextMenuOpen = ref(false)
+const contextMenuItems = ref<WorkspaceContextMenuItem[]>([])
+const contextX = ref(0)
+const contextY = ref(0)
+
+const hasFileSelection = computed(() => Boolean(props.selectedFileId && props.selectedFile))
+const visibleStats = computed(() => {
+  const total = props.entries.length
+  const translated = props.entries.filter((entry) => !!entry.targetValue).length
+  const missing = total - translated
+  const reviewed = props.entries.filter((entry) => entry.status === 'reviewed' || entry.status === 'approved').length
+  return {total, translated, missing, reviewed}
+})
+
+const headerMenuItems = computed<DropdownMenuItem[][]>(() => [[
+  {
+    label: t('actions.newEntry'),
+    icon: 'i-lucide-file-plus-2',
+    disabled: !props.selectedFileId,
+    onSelect: () => props.selectedFileId && emit('createEntry', props.selectedFileId)
+  },
+  {
+    label: t('actions.deleteSelectedEntries'),
+    icon: 'i-lucide-trash-2',
+    disabled: !props.selectedEntryIds.length,
+    onSelect: () => props.selectedEntryIds.length && emit('deleteEntries', props.selectedEntryIds)
+  }
+]])
 
 const viewItems = computed<TabsItem[]>(() => [
-  {label: 'List', value: 'list', icon: 'i-lucide-list'},
-  {label: 'Treemap', value: 'treemap', icon: 'i-lucide-chart-no-axes-column'}
+  {label: t('actions.list'), value: 'list', icon: 'i-lucide-list'},
+  {label: t('actions.treemap'), value: 'treemap', icon: 'i-lucide-chart-no-axes-column'}
 ])
+
+const statusItems = computed(() => [
+  {label: t('labels.allStatuses'), value: 'all'},
+  {label: t('status.new'), value: 'new'},
+  {label: t('status.translated'), value: 'translated'},
+  {label: t('status.reviewed'), value: 'reviewed'},
+  {label: t('status.approved'), value: 'approved'},
+  {label: t('status.stale'), value: 'stale'}
+])
+
+const sortItems = computed(() => [
+  {label: t('labels.sortUpdatedDesc'), value: 'updatedDesc'},
+  {label: t('labels.sortKeyAsc'), value: 'keyAsc'},
+  {label: t('labels.sortStatus'), value: 'status'}
+])
+
+const allVisibleSelected = computed(() => Boolean(props.entries.length) && props.entries.every((entry) => props.selectedEntryIds.includes(entry.id)))
 
 function statusColor(status: EntrySummary['status']) {
   if (status === 'approved') return 'success'
@@ -42,157 +92,202 @@ function statusColor(status: EntrySummary['status']) {
   return 'neutral'
 }
 
-const columns: TableColumn<EntrySummary>[] = [
-  {
-    accessorKey: 'key',
-    header: 'Key',
-    cell: ({row}) => {
-      const entry = row.original
-      return h('div', {class: 'space-y-1 min-w-0'}, [
-        h(UButton, {
-          color: entry.id === props.selectedEntryId ? 'primary' : 'neutral',
-          variant: entry.id === props.selectedEntryId ? 'soft' : 'ghost',
-          class: 'justify-start px-0 font-medium max-w-full',
-          onClick: () => emit('selectEntry', entry.id)
-        }, () => entry.key),
-        h('p', {class: 'text-xs text-muted truncate'}, entry.fileId)
-      ])
-    },
-    meta: {
-      class: {
-        th: 'w-[26rem]',
-        td: 'align-top'
-      }
-    }
-  },
-  {
-    accessorKey: 'sourceValue',
-    header: 'Source',
-    cell: ({row}) => h('p', {class: 'line-clamp-2 text-sm'}, row.original.sourceValue || '—')
-  },
-  {
-    accessorKey: 'targetValue',
-    header: 'Target',
-    cell: ({row}) => h('p', {class: 'line-clamp-2 text-sm'}, row.original.targetValue || '—')
-  },
-  {
-    accessorKey: 'status',
-    header: 'Status',
-    cell: ({row}) => h(UBadge, {
-      color: statusColor(row.original.status),
-      variant: 'subtle',
-      class: 'capitalize'
-    }, () => row.original.status)
-  },
-  {
-    accessorKey: 'updatedAt',
-    header: 'Updated',
-    cell: ({row}) => h('span', {class: 'text-xs text-muted'}, new Date(row.original.updatedAt).toLocaleString())
+function openMenu(event: MouseEvent, items: WorkspaceContextMenuItem[]) {
+  if (!items.length) return
+  event.preventDefault()
+  event.stopPropagation()
+  contextMenuItems.value = items
+  contextX.value = event.clientX
+  contextY.value = event.clientY
+  contextMenuOpen.value = true
+}
+
+function entryMenu(entry: EntrySummary): WorkspaceContextMenuItem[] {
+  const multiple = props.selectedEntryIds.length > 1 && props.selectedEntryIds.includes(entry.id)
+  return buildContextMenuItems(t, [
+    {id: 'entry.new', payload: entry.fileId},
+    multiple
+        ? {id: 'entry.deleteSelected', payload: props.selectedEntryIds.join(',')}
+        : {id: 'entry.delete', payload: entry.id}
+  ])
+}
+
+function canvasMenu(): WorkspaceContextMenuItem[] {
+  return buildContextMenuItems(t, [
+    {id: 'entry.new', payload: props.selectedFileId || undefined, disabled: !props.selectedFileId},
+    {id: 'entry.deleteSelected', payload: props.selectedEntryIds.join(','), disabled: !props.selectedEntryIds.length}
+  ])
+}
+
+function onMenuSelect(value: string) {
+  const {actionId, payload} = parseActionValue(value)
+  if (actionId === 'entry.new' && payload) emit('createEntry', payload)
+  if (actionId === 'entry.delete' && payload) emit('deleteEntry', payload)
+  if (actionId === 'entry.deleteSelected' && payload) emit('deleteEntries', payload.split(',').filter(Boolean))
+}
+
+function toggleEntrySelection(entry: EntrySummary) {
+  emit('selectEntry', {
+    entryId: entry.id,
+    append: true,
+    orderedIds: props.entries.map((item) => item.id)
+  })
+}
+
+function handleRowPrimaryAction(entry: EntrySummary, event?: MouseEvent) {
+  emit('selectEntry', {
+    entryId: entry.id,
+    append: Boolean(event?.ctrlKey || event?.metaKey),
+    range: Boolean(event?.shiftKey),
+    orderedIds: props.entries.map((item) => item.id)
+  })
+}
+
+function onRowContextMenu(entry: EntrySummary, event: MouseEvent) {
+  if (!props.selectedEntryIds.includes(entry.id)) {
+    emit('selectEntry', {entryId: entry.id, orderedIds: props.entries.map((item) => item.id)})
   }
-]
+  openMenu(event, entryMenu(entry))
+}
+
+function toggleSelectAll(value: boolean | 'indeterminate') {
+  if (value) emit('selectAllEntries', props.entries.map((entry) => entry.id))
+  else emit('selectAllEntries', [])
+}
 </script>
 
 <template>
-  <div class="space-y-4">
-    <div class="grid gap-4 xl:grid-cols-[minmax(0,1fr)_20rem]">
-      <UCard>
-        <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div class="flex min-w-0 flex-1 flex-col gap-3 lg:flex-row lg:items-center">
-            <UInput
-                :model-value="searchText"
-                icon="i-lucide-search"
-                class="w-full lg:max-w-md"
-                :placeholder="$t('labels.searchEntries') as string"
-                @update:model-value="(value) => emit('updateSearch', String(value))"
-            />
-            <div class="flex flex-wrap items-center gap-3">
-              <UCheckbox
-                  :model-value="showOnlyMissing"
-                  :label="$t('labels.missingOnly') as string"
-                  @update:model-value="(value) => emit('changeShowOnlyMissing', Boolean(value))"
-              />
-              <UBadge color="neutral" variant="subtle">
-                {{ entries.length }} {{ $t('labels.entries') }}
-              </UBadge>
-            </div>
+  <UCard
+      :ui="{ root: 'h-full min-h-0 rounded-none border-0 flex flex-col', body: 'min-h-0 flex-1 overflow-hidden p-0' }">
+    <template #header>
+      <div v-if="hasFileSelection" class="space-y-3" @mousedown.right.prevent.stop="openMenu($event, canvasMenu())"
+           @contextmenu.prevent.stop="openMenu($event, canvasMenu())">
+        <div class="flex items-start justify-between gap-3">
+          <div class="min-w-0">
+            <h2 class="font-semibold">{{ t('labels.entries') }}</h2>
+            <p class="truncate text-sm text-muted">{{ selectedFile?.name }} · {{ entries.length }}
+              {{ t('labels.visibleRows') }}<span v-if="selectedEntryIds.length"> · {{
+                  selectedEntryIds.length
+                }} {{ t('labels.selected') }}</span></p>
           </div>
 
-          <UTabs
-              :model-value="viewMode"
-              :items="viewItems"
-              :content="false"
-              class="w-full lg:w-auto"
-              @update:model-value="(value) => emit('changeView', value as ViewMode)"
-          />
-        </div>
-      </UCard>
-
-      <UCard>
-        <div class="grid grid-cols-2 gap-3">
-          <div>
-            <p class="text-xs text-muted">{{ $t('labels.total') }}</p>
-            <p class="text-lg font-semibold">{{ project.stats.total }}</p>
-          </div>
-          <div>
-            <p class="text-xs text-muted">{{ $t('labels.translated') }}</p>
-            <p class="text-lg font-semibold">{{ project.stats.translated }}</p>
-          </div>
-          <div>
-            <p class="text-xs text-muted">{{ $t('labels.missing') }}</p>
-            <p class="text-lg font-semibold">{{ project.stats.missing }}</p>
-          </div>
-          <div>
-            <p class="text-xs text-muted">{{ $t('labels.reviewed') }}</p>
-            <p class="text-lg font-semibold">{{ project.stats.reviewed }}</p>
+          <div class="flex shrink-0 items-center gap-2">
+            <UTabs :content="false" :items="viewItems" :model-value="viewMode"
+                   @update:model-value="value => emit('changeView', String(value) as ViewMode)"/>
+            <UDropdownMenu :items="headerMenuItems" :modal="false" :ui="{ content: 'w-56' }">
+              <UButton color="neutral" icon="i-lucide-ellipsis" variant="ghost"/>
+            </UDropdownMenu>
           </div>
         </div>
-      </UCard>
-    </div>
 
-    <UCard>
-      <template #header>
-        <div class="flex items-center justify-between gap-3">
-          <div>
-            <h2 class="font-semibold">{{ $t('actions.bulkReplace') }}</h2>
-            <p class="text-sm text-muted">{{ $t('descriptions.bulkReplace') }}</p>
+        <div class="flex flex-wrap items-center gap-2">
+          <div class="w-40 min-w-0">
+            <USelectMenu :items="statusItems" :model-value="statusFilter" value-key="value"
+                         @update:model-value="value => emit('updateStatusFilter', String(value) as TranslationStatus | 'all')"/>
           </div>
-          <UButton icon="i-lucide-scan-search" @click="emit('applyBulkReplace')">
-            {{ $t('actions.apply') }}
-          </UButton>
-        </div>
-      </template>
-
-      <div class="grid gap-4 md:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
-        <UFormField :label="$t('labels.search') as string" name="bulk-search">
-          <UInput
-              :model-value="bulkSearch"
-              placeholder="welcome"
-              @update:model-value="(value) => emit('updateBulkSearch', String(value))"
-          />
-        </UFormField>
-
-        <UFormField :label="$t('labels.replacement') as string" name="bulk-replacement">
-          <UInput
-              :model-value="bulkReplacement"
-              placeholder="欢迎"
-              @update:model-value="(value) => emit('updateBulkReplacement', String(value))"
-          />
-        </UFormField>
-
-        <div class="flex items-end">
-          <UCheckbox
-              :model-value="bulkUseRegex"
-              :label="$t('labels.regex') as string"
-              @update:model-value="(value) => emit('updateBulkUseRegex', Boolean(value))"
-          />
+          <div class="w-40 min-w-0">
+            <USelectMenu :items="sortItems" :model-value="sortBy" value-key="value"
+                         @update:model-value="value => emit('updateSortBy', String(value) as 'updatedDesc' | 'keyAsc' | 'status')"/>
+          </div>
+          <UCheckbox :label="t('labels.missingOnly')" :model-value="showOnlyMissing"
+                     @update:model-value="value => emit('changeShowOnlyMissing', Boolean(value))"/>
+          <UBadge v-if="searchText" color="neutral" variant="subtle">{{ t('labels.find') }}: {{ searchText }}</UBadge>
+          <UBadge color="neutral" variant="subtle">{{ visibleStats.total }} {{ t('labels.total') }}</UBadge>
+          <UBadge color="primary" variant="soft">{{ visibleStats.translated }} {{ t('labels.translated') }}</UBadge>
+          <UBadge color="warning" variant="soft">{{ visibleStats.missing }} {{ t('labels.missing') }}</UBadge>
+          <UBadge color="info" variant="soft">{{ visibleStats.reviewed }} {{ t('labels.reviewed') }}</UBadge>
         </div>
       </div>
-    </UCard>
+    </template>
 
-    <TreemapView v-if="viewMode === 'treemap'" :nodes="project.treemap"/>
+    <div v-if="!hasFileSelection" class="flex h-full items-center justify-center px-8 py-10">
+      <div class="max-w-sm space-y-2 text-center">
+        <UIcon class="mx-auto h-8 w-8 text-muted" name="i-lucide-list-tree"/>
+        <p class="text-base font-medium">{{ $t('empty.noFileSelectedTitle') }}</p>
+        <p class="text-sm text-muted">{{ $t('empty.noFileSelectedDescription') }}</p>
+      </div>
+    </div>
 
-    <UCard v-else>
-      <UTable :data="entries" :columns="columns" class="min-h-[32rem]"/>
-    </UCard>
-  </div>
+    <template v-else>
+      <div v-if="viewMode === 'list'" class="min-h-0 flex-1 overflow-auto"
+           @mousedown.right.prevent.stop="openMenu($event, canvasMenu())"
+           @contextmenu.prevent.stop="openMenu($event, canvasMenu())">
+        <table class="w-full table-fixed border-collapse text-sm">
+          <colgroup>
+            <col class="w-[44px]"/>
+            <col class="w-[31%]"/>
+            <col class="w-[22%]"/>
+            <col class="w-[22%]"/>
+            <col class="w-[11%]"/>
+            <col class="w-[14%]"/>
+          </colgroup>
+          <thead class="sticky top-0 z-10 bg-default/95 backdrop-blur">
+          <tr class="border-b border-default text-left text-xs uppercase tracking-wide text-muted">
+            <th class="px-3 py-3 font-medium">
+              <UCheckbox :model-value="allVisibleSelected" @update:model-value="toggleSelectAll"/>
+            </th>
+            <th class="px-4 py-3 font-medium">{{ t('labels.key') }}</th>
+            <th class="px-4 py-3 font-medium">{{ t('labels.sourceValue') }}</th>
+            <th class="px-4 py-3 font-medium">{{ t('labels.targetValue') }}</th>
+            <th class="px-4 py-3 font-medium">{{ t('labels.status') }}</th>
+            <th class="px-4 py-3 font-medium">{{ t('labels.updated') }}</th>
+          </tr>
+          </thead>
+          <tbody>
+          <tr v-if="!entries.length">
+            <td class="px-4 py-8 text-sm text-muted" colspan="6">{{ $t('empty.noEntriesForFile') }}</td>
+          </tr>
+          <tr
+              v-for="entry in entries"
+              :key="entry.id"
+              :class="[
+                'cursor-default border-b border-default/60 align-top transition-colors hover:bg-elevated/60',
+                selectedEntryIds.includes(entry.id) ? 'bg-elevated/80' : ''
+              ]"
+              @click="handleRowPrimaryAction(entry, $event)"
+              @mousedown.right.prevent.stop="onRowContextMenu(entry, $event)"
+              @contextmenu.prevent.stop="onRowContextMenu(entry, $event)"
+          >
+            <td class="px-3 py-3 align-top">
+              <UCheckbox :model-value="selectedEntryIds.includes(entry.id)" @click.stop="toggleEntrySelection(entry)"/>
+            </td>
+            <td class="px-4 py-3">
+              <div class="min-w-0 space-y-1">
+                <div class="truncate font-medium">{{ entry.key }}</div>
+                <div class="flex flex-wrap gap-1.5">
+                  <UBadge v-if="entry.noteCount" color="neutral" size="sm" variant="subtle">{{
+                      entry.noteCount
+                    }}N
+                  </UBadge>
+                  <UBadge v-if="entry.candidateCount" color="primary" size="sm" variant="subtle">{{
+                      entry.candidateCount
+                    }}C
+                  </UBadge>
+                </div>
+              </div>
+            </td>
+            <td class="px-4 py-3">
+              <div class="line-clamp-3 whitespace-pre-wrap text-muted">{{ entry.sourceValue || '—' }}</div>
+            </td>
+            <td class="px-4 py-3">
+              <div class="line-clamp-3 whitespace-pre-wrap">{{ entry.targetValue || '—' }}</div>
+            </td>
+            <td class="px-4 py-3">
+              <UBadge :color="statusColor(entry.status)" variant="subtle">{{ t(`status.${entry.status}`) }}</UBadge>
+            </td>
+            <td class="px-4 py-3 text-muted">{{ new Date(entry.updatedAt).toLocaleString() }}</td>
+          </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div v-else class="h-full min-h-0 overflow-hidden">
+        <TreemapView :entries="entries" :search-text="searchText" :show-only-missing="showOnlyMissing" :sort-by="sortBy"
+                     :status-filter="statusFilter"/>
+      </div>
+    </template>
+  </UCard>
+
+  <ContextMenu v-model:open="contextMenuOpen" :items="contextMenuItems" :x="contextX" :y="contextY"
+               @select="onMenuSelect"/>
 </template>

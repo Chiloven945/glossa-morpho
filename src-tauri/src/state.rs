@@ -1,22 +1,23 @@
 use crate::models::{
-    BootstrapResponse, CandidateItem, EntryDetail, EntrySummary, HistoryEvent, ProjectStats,
-    ProjectWorkspace, ResourceFileNode, TreemapNode, ValidationIssue,
+    BootstrapResponse, EntrySummary, ImportPreviewState, ProjectWorkspace, TreemapNode,
 };
-use chrono::Utc;
 use parking_lot::RwLock;
 use std::collections::HashMap;
-use uuid::Uuid;
+use std::fs;
+use std::path::PathBuf;
 
 pub struct AppState {
     pub recent_projects: RwLock<Vec<String>>,
     pub projects: RwLock<HashMap<String, ProjectWorkspace>>,
+    pub import_previews: RwLock<HashMap<String, ImportPreviewState>>,
 }
 
 impl Default for AppState {
     fn default() -> Self {
         Self {
-            recent_projects: RwLock::new(vec!["/Users/you/projects/demo.gmproj".to_string()]),
+            recent_projects: RwLock::new(load_recent_projects()),
             projects: RwLock::new(HashMap::new()),
+            import_previews: RwLock::new(HashMap::new()),
         }
     }
 }
@@ -36,202 +37,51 @@ impl AppState {
             .insert(project.id.clone(), project.clone());
         project
     }
+
+    pub fn push_recent_project(&self, path: &str) {
+        let mut recent_projects = self.recent_projects.write();
+        recent_projects.retain(|item| item != path);
+        recent_projects.insert(0, path.to_string());
+        recent_projects.truncate(12);
+        let _ = persist_recent_projects(&recent_projects);
+    }
 }
 
-pub fn demo_project(
-    name: &str,
-    path: &str,
-    source_locale: &str,
-    target_locale: &str,
-) -> ProjectWorkspace {
-    let files = vec![
-        ResourceFileNode {
-            id: "file-json-en".into(),
-            name: "app.en-US.json".into(),
-            logical_path: "locale/source/app.en-US.json".into(),
-            format: "json".into(),
-            locale: source_locale.into(),
-            role: "source".into(),
-        },
-        ResourceFileNode {
-            id: "file-json-target".into(),
-            name: format!("app.{}.json", target_locale),
-            logical_path: format!("locale/target/app.{}.json", target_locale),
-            format: "json".into(),
-            locale: target_locale.into(),
-            role: "target".into(),
-        },
-        ResourceFileNode {
-            id: "file-yaml-en".into(),
-            name: "marketing.en-US.yaml".into(),
-            logical_path: "locale/source/marketing.en-US.yaml".into(),
-            format: "yaml".into(),
-            locale: source_locale.into(),
-            role: "source".into(),
-        },
-        ResourceFileNode {
-            id: "file-yaml-target".into(),
-            name: format!("marketing.{}.yaml", target_locale),
-            logical_path: format!("locale/target/marketing.{}.yaml", target_locale),
-            format: "yaml".into(),
-            locale: target_locale.into(),
-            role: "target".into(),
-        },
-    ];
+fn recent_projects_store_path() -> PathBuf {
+    let base_dir = dirs::config_dir()
+        .or_else(dirs::home_dir)
+        .unwrap_or(std::env::temp_dir());
+    base_dir.join("glossa-morpho").join("recent-projects.json")
+}
 
-    let now = Utc::now().to_rfc3339();
+fn load_recent_projects() -> Vec<String> {
+    let path = recent_projects_store_path();
+    let Ok(raw) = fs::read_to_string(path) else {
+        return Vec::new();
+    };
 
-    let mut details = HashMap::new();
-    let entries_seed = vec![
-        (
-            "dashboard.welcomeBack",
-            "Welcome back, {name}",
-            "欢迎回来，{name}",
-            "translated",
-            "file-json-target",
-            "locale/target/app.zh-CN.json",
-        ),
-        (
-            "dashboard.emptyState.title",
-            "No records found",
-            "",
-            "new",
-            "file-json-target",
-            "locale/target/app.zh-CN.json",
-        ),
-        (
-            "marketing.heroSubtitle",
-            "Ship localization projects faster",
-            "更快交付本地化项目",
-            "reviewed",
-            "file-yaml-target",
-            "locale/target/marketing.zh-CN.yaml",
-        ),
-        (
-            "settings.autoSaveInterval",
-            "Auto save interval",
-            "自动保存间隔",
-            "translated",
-            "file-json-target",
-            "locale/target/app.zh-CN.json",
-        ),
-        (
-            "errors.networkTimeout",
-            "Network request timed out",
-            "",
-            "new",
-            "file-json-target",
-            "locale/target/app.zh-CN.json",
-        ),
-        (
-            "common.ok",
-            "OK",
-            "确定",
-            "approved",
-            "file-json-target",
-            "locale/target/app.zh-CN.json",
-        ),
-    ];
+    serde_json::from_str::<Vec<String>>(&raw).unwrap_or_default()
+}
 
-    let mut entries = Vec::new();
-    for (key, source_value, target_value, status, file_id, file_path) in entries_seed {
-        let id = Uuid::new_v4().to_string();
-        let summary = EntrySummary {
-            id: id.clone(),
-            file_id: file_id.into(),
-            key: key.into(),
-            source_value: source_value.into(),
-            target_value: target_value.into(),
-            status: status.into(),
-            note_count: if target_value.is_empty() { 0 } else { 1 },
-            candidate_count: 2,
-            updated_at: now.clone(),
-        };
-
-        let detail = EntryDetail {
-            summary: summary.clone(),
-            file_path: file_path.into(),
-            source_locale: source_locale.into(),
-            target_locale: target_locale.into(),
-            note: if target_value.is_empty() {
-                String::new()
-            } else {
-                "Check punctuation and placeholders before review.".into()
-            },
-            issues: if target_value.contains("{name}") {
-                vec![]
-            } else {
-                vec![ValidationIssue {
-                    id: Uuid::new_v4().to_string(),
-                    level: "warning".into(),
-                    message: "Placeholder consistency not checked yet.".into(),
-                }]
-            },
-            candidates: vec![
-                CandidateItem {
-                    id: Uuid::new_v4().to_string(),
-                    source: "history".into(),
-                    value: if target_value.is_empty() {
-                        "欢迎回来，{name}".into()
-                    } else {
-                        target_value.into()
-                    },
-                    score: 0.92,
-                },
-                CandidateItem {
-                    id: Uuid::new_v4().to_string(),
-                    source: "manual".into(),
-                    value: if target_value.is_empty() {
-                        "你好，{name}".into()
-                    } else {
-                        target_value.into()
-                    },
-                    score: 0.61,
-                },
-            ],
-            history: vec![HistoryEvent {
-                id: Uuid::new_v4().to_string(),
-                action: "edit".into(),
-                before_value: String::new(),
-                after_value: target_value.into(),
-                operator: "system".into(),
-                created_at: now.clone(),
-            }],
-        };
-
-        entries.push(summary);
-        details.insert(id, detail);
+fn persist_recent_projects(recent_projects: &[String]) -> Result<(), String> {
+    let path = recent_projects_store_path();
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|error| {
+            format!(
+                "failed to create config directory {}: {error}",
+                parent.display()
+            )
+        })?;
     }
 
-    let treemap = build_treemap(&entries);
-    let translated = entries
-        .iter()
-        .filter(|entry| !entry.target_value.is_empty())
-        .count();
-    let reviewed = entries
-        .iter()
-        .filter(|entry| entry.status == "reviewed" || entry.status == "approved")
-        .count();
-
-    ProjectWorkspace {
-        id: Uuid::new_v4().to_string(),
-        name: name.into(),
-        path: path.into(),
-        source_locale: source_locale.into(),
-        target_locale: target_locale.into(),
-        target_locales: vec![target_locale.into(), "ja-JP".into()],
-        dirty: false,
-        files,
-        entries: entries.clone(),
-        details,
-        treemap,
-        stats: ProjectStats {
-            total: entries.len(),
-            translated,
-            missing: entries.len() - translated,
-            reviewed,
-        },
-    }
+    let payload = serde_json::to_string_pretty(recent_projects)
+        .map_err(|error| format!("failed to serialize recent projects: {error}"))?;
+    fs::write(&path, payload).map_err(|error| {
+        format!(
+            "failed to write recent projects file {}: {error}",
+            path.display()
+        )
+    })
 }
 
 pub fn build_treemap(entries: &[EntrySummary]) -> Vec<TreemapNode> {

@@ -1,13 +1,22 @@
 export type TranslationStatus = 'new' | 'translated' | 'reviewed' | 'approved' | 'stale'
 export type ViewMode = 'list' | 'treemap'
+export type ResourceFormat = 'json' | 'yaml' | 'properties' | 'resx' | 'xaml' | 'xliff'
+export type ProjectCompressionType = 'lzma2' | 'deflate'
+
+export interface LocaleDependencyNode {
+    code: string
+    label: string
+    parentCode: string | null
+}
 
 export interface ResourceFileNode {
     id: string
     name: string
     logicalPath: string
-    format: 'json' | 'yaml' | 'properties' | 'resx' | 'xaml' | 'xliff'
+    format: ResourceFormat
     locale: string
-    role: 'source' | 'target'
+    basedOnLocale: string | null
+    rawRelativePath?: string | null
 }
 
 export interface CandidateItem {
@@ -19,7 +28,7 @@ export interface CandidateItem {
 
 export interface HistoryEvent {
     id: string
-    action: 'edit' | 'bulk_edit' | 'import_override' | 'revert'
+    action: 'edit' | 'bulk_edit' | 'import_override' | 'revert' | 'bulk_edit_regex' | 'create' | 'delete'
     beforeValue: string
     afterValue: string
     operator: string
@@ -75,9 +84,14 @@ export interface ProjectWorkspace {
     id: string
     name: string
     path: string
-    sourceLocale: string
-    targetLocale: string
-    targetLocales: string[]
+    workspaceDir?: string
+    localeGraph: LocaleDependencyNode[]
+    primaryLocale: string
+    workingLocale: string
+    archiveFormat: ProjectCompressionType
+    keySegmentationProfiles?: string[]
+    defaultView?: ViewMode
+    defaultSort?: 'updatedDesc' | 'keyAsc' | 'status'
     dirty: boolean
     files: ResourceFileNode[]
     entries: EntrySummary[]
@@ -93,8 +107,68 @@ export interface BootstrapResponse {
 
 export interface CreateProjectInput {
     name: string
-    sourceLocale: string
-    targetLocale: string
+    path?: string
+    localeGraph: LocaleDependencyNode[]
+    primaryLocale: string
+    workingLocale: string
+    archiveFormat?: ProjectCompressionType
+    keySegmentationProfiles?: string[]
+}
+
+export interface UpdateProjectMetadataInput {
+    projectId: string
+    name: string
+    primaryLocale: string
+    workingLocale: string
+    archiveFormat: ProjectCompressionType
+    keySegmentationProfiles: string[]
+    defaultView: ViewMode
+    defaultSort: 'updatedDesc' | 'keyAsc' | 'status'
+}
+
+
+export interface CreateResourceFileInput {
+    projectId: string
+    name: string
+    logicalPath: string
+    format: ResourceFormat
+    locale: string
+    basedOnLocale?: string | null
+    includeDescendants?: boolean
+}
+
+export interface RenameResourceFileInput {
+    projectId: string
+    fileId: string
+    name: string
+    logicalPath: string
+    includeRelated?: boolean
+}
+
+export interface DeleteResourceFileInput {
+    projectId: string
+    fileId: string
+    includeRelated?: boolean
+}
+
+export interface CreateEntryInput {
+    projectId: string
+    fileId: string
+    key: string
+    sourceValue?: string
+    targetValue?: string
+    note?: string
+    status?: TranslationStatus
+}
+
+export interface DeleteEntryInput {
+    projectId: string
+    entryId: string
+}
+
+export interface DeleteEntriesInput {
+    projectId: string
+    entryIds: string[]
 }
 
 export interface UpdateEntryInput {
@@ -116,4 +190,73 @@ export interface BulkReplaceInput {
 export interface BulkReplaceResult {
     changedEntryIds: string[]
     project: ProjectWorkspace
+}
+
+export interface ImportFileInput {
+    path: string
+    locale: string
+    basedOnLocale?: string | null
+    logicalPath?: string
+}
+
+export interface ImportPreviewItem {
+    previewFileId: string
+    path: string
+    logicalPath: string
+    name: string
+    format: ResourceFormat
+    locale: string
+    basedOnLocale: string | null
+    entryCount: number
+    conflictCount: number
+}
+
+export interface ImportConflict {
+    kind: 'file' | 'entry'
+    logicalPath: string
+    locale: string
+    key?: string
+    existingValue?: string
+    incomingValue?: string
+    message: string
+}
+
+export interface ImportPreviewResponse {
+    previewId: string
+    items: ImportPreviewItem[]
+    entries: EntrySummary[]
+    conflicts: ImportConflict[]
+    totals: {
+        files: number
+        entries: number
+        conflicts: number
+    }
+}
+
+export interface PreviewImportInput {
+    projectId: string
+    files: ImportFileInput[]
+}
+
+export interface CommitImportInput {
+    projectId: string
+    previewId: string
+}
+
+export interface ExportProjectInput {
+    projectId: string
+    fileId?: string
+    outputPath?: string
+}
+
+export interface BatchExportInput {
+    projectId: string
+    fileIds: string[]
+    outputDirectory?: string
+}
+
+export interface ExportProjectResult {
+    projectId: string
+    outputPath: string
+    exportedFiles: string[]
 }

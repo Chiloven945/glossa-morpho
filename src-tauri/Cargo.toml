@@ -22,10 +22,28 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-chrono = { version = "0.4", features = ["clock", "serde"] }
-parking_lot = "0.12"
+# Core Framework & UI
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+
+# Serialization & Data
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-tauri = { version = "2", features = [] }
+serde_yaml = "0.9"
+rusqlite = { version = "0.39.0", features = ["bundled"] }
+xmltree = "0.12.0"
+
+# Filesystem & Archiving
+dirs = "6.0.0"
+flate2 = "1"
+tar = "0.4"
+tempfile = "3"
+walkdir = "2"
+xz2 = "0.1"
+
+# Utilities
+chrono = { version = "0.4", features = ["clock", "serde"] }
+parking_lot = "0.12"
+regex = "1"
 thiserror = "2"
 uuid = { version = "1", features = ["serde", "v4"] }

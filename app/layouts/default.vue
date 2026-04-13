@@ -1,5 +1,5 @@
 <template>
-  <div class="min-h-screen bg-[var(--gm-bg)] text-[var(--gm-text)]">
+  <div class="min-h-screen bg-default text-default">
     <slot/>
   </div>
 </template>
